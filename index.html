@@ -177,7 +177,7 @@
             'No Bounce': 'Trigger: First activation of first Sweep Phase. Effect: Begin with one fewer Vital Action Die.'
         };
 
-        // --- OFFICIAL GENERATION TABLES ---
+        // --- OFFICIAL GENERATION TABLES (RULEBOOK PAGES 43 - 52) ---
         const SITE_CONDITION_TABLE = {
             1: 'Pristine - Operations normal. No environmental penalties.',
             2: 'Pristine - Operations normal. No environmental penalties.',
@@ -328,7 +328,7 @@
                 const primeKey = `Prime (${key})`;
                 HOSTILES_DATA[primeKey] = {
                     ...BASE_HOSTILES[key],
-                    traits: ['Tough', ...(BASE_HOSTILES[key]?.traits || [])]
+                    traits: ['Tough', ...BASE_HOSTILES[key].traits]
                 };
             }
         });
@@ -401,7 +401,7 @@
         };
 
         const VERSION_HISTORY = [
-            { version: "1.51.0", date: "2026-03-04", notes: ["Fully integrated Grenade combat mechanics directly into Utility Slots.", "Clicking a Grenade (Dazzler or EMP) now prompts a specialized 'Throw Grenade' combat modal that consumes an Action Die.", "Added support for target visibility penalty (-1 Attack if indirect/not visible).", "Added automated On Target / Off Target resolution. A successful throw perfectly centers the LBT and can auto-resolve against a selected primary target based on their type (Robotic vs Organic).", "Failed throws automatically execute the 1D10 Deviation Scatter mechanic, calculating exact direction and drift distance."] },
+            { version: "1.51.0", date: "2026-03-04", notes: ["Fully integrated Grenade combat mechanics directly into Utility Slots.", "Clicking a Grenade (Dazzler or EMP) now prompts a specialized 'Throw Grenade' combat modal that consumes an Action Die.", "Added support for target visibility penalty (-1 Attack if indirect/not visible).", "Added automated On Target / Off Target resolution.", "Failed throws automatically execute the 1D10 Deviation Scatter mechanic, calculating exact direction and drift distance."] },
             { version: "1.50.0", date: "2026-03-04", notes: ["Implemented 'Pending Choices Queue' system. Resolving Quiet Pulls and Specific Objectives (like L2_6 Black Box) now immediately surfaces a mandatory choice popup for selecting specific rewards or mechanical outcomes instead of just a text log."] },
             { version: "1.49.0", date: "2026-03-04", notes: ["Integrated explicit rule mechanics for missing rulebook scenarios.", "Implemented official Stun Recovery: Clicking 'Resolve Stun' rolls all ready Action Dice, exhausting any that fail (roll < 4) before clearing the condition.", "Added Aim and Assist mechanics to Combat Modals.", "Added the 5 official Tier IV Apex Threats to the Hostile spawn list.", "Hostile Weapon definitions now display their exact rule effects directly on the card."] },
             { version: "1.48.0", date: "2026-03-04", notes: ["Added explicit weapon loadouts directly onto the Active Hostiles cards in Play Mode for quick reference."] },
@@ -889,6 +889,11 @@
                 if (char.melee && WEAPONS_MELEE[char.melee]) slots += WEAPONS_MELEE[char.melee].uSlots;
                 if (char.ranged && WEAPONS_RANGED[char.ranged]) slots += WEAPONS_RANGED[char.ranged].uSlots;
                 
+                // Add mod bonuses
+                if (char.meleeMod === 'Mag-Sheath' && char.melee !== 'Power Shears') slots += 1;
+                if (char.rangedMod === 'Bayonet Lug') slots += 1;
+                if (char.evaMods?.includes('Tool Harness')) slots += 3;
+
                 // Knack Bonus
                 if (char.knack === 'Deep Pocket') slots += 1;
                 
@@ -904,6 +909,7 @@
                     
                     const newChar = { ...c };
                     
+                    // Specific Logic Intercepts
                     if (field === 'role' && !value.startsWith('Yarddog')) {
                         if (WEAPONS_RANGED[newChar.ranged]?.ydOnly) newChar.ranged = 'Coil Pistol';
                         if (newChar.trainingModule === 'Range Time') newChar.trainingModule = 'None'; 
@@ -927,6 +933,7 @@
 
                     if (field.startsWith('vitals.')) {
                         const vType = field.split('.')[1];
+                        // Swap logic to prevent duplicate dice
                         const oldVital = Object.keys(newChar.vitals).find(k => newChar.vitals[k] === value);
                         if (oldVital && oldVital !== vType) {
                             newChar.vitals[oldVital] = newChar.vitals[vType];
@@ -1126,7 +1133,7 @@
                 
                 let atkMod = 0;
                 if (!isVisible) atkMod -= 1; // Indirect fire penalty
-                if (isYarddogRanged && manualAtk === null) atkMod += 2; 
+                if (isYarddogRanged && manualAtk === null) atkMod += 2; // Ranged Yarddogs get +2 TDB equivalent to grenades implicitly if we count it as Ranged. We will apply +2 explicitly for TDB synergy here.
                 
                 let finalAtk = baseAtk + atkMod;
 
@@ -1230,7 +1237,6 @@
                 if (wEffects.includes('rolls DD twice')) rollTwice = true;
                 if (wEffects.includes('Fail=Stun')) damage = 0; 
                 if (wEffects.includes('Does not Wound')) damage = 0; 
-                if (wEffects.includes('-1 to Melee') && weaponType === 'melee') atkMod -= 1; 
                 
                 // Traits
                 if (tData.traits?.includes('Low-Profile') && weaponType === 'ranged') atkMod -= 1;
@@ -1341,8 +1347,6 @@
                 const weaponName = eData.weapons?.[weaponType];
                 const wData = weaponType === 'melee' ? WEAPONS_MELEE[weaponName] : WEAPONS_RANGED[weaponName];
                 const wEffects = wData?.effects || '';
-                
-                const hostileDamage = 1;
 
                 // Attacker Roll
                 const atkSides = parseInt(eData.atk?.substring(1) || 4);
@@ -1382,6 +1386,7 @@
 
                     if (hostileAttackPrompt.cover === 'Light') ddMod += 1;
                     if (hostileAttackPrompt.cover === 'Hard') ddMod += 2;
+                    if (eData.traits?.includes('Heavy Hit')) ddMod -= 1;
                     if (target.live.stunned) ddMod -= 2;
                     if (hostileAttackPrompt.isProne) ddMod -= 2;
 
@@ -1398,7 +1403,6 @@
 
                     // Armor & Shield Mods
                     if (target.evaMods?.includes('Carbon Fiber Plates')) ddMod += 1;
-                    if (target.evaMods?.includes('Hardened Suit System') && (wEffects.includes('Fail=Stun') || eData.traits?.includes('Terror Presence'))) ddMod += 1;
 
                     const dd1 = rollDice(1, ddSides);
                     const dd2 = rollTwice ? rollDice(1, ddSides) : 99;
@@ -1419,8 +1423,8 @@
                             logMsg += ` STUNNED: ${target.name} takes a severe shock!`;
                             updateLiveState(target.id, 'stunned', true);
                         } else {
-                            logMsg += ` INJURY: ${target.name} takes ${hostileDamage} Wound(s)!`;
-                            handleWoundChange(target, Math.min(4, target.wounds + hostileDamage));
+                            logMsg += ` INJURY: ${target.name} takes 1 Wound!`;
+                            handleWoundChange(target, Math.min(4, target.wounds + 1));
                         }
                         
                         if (wEffects.includes('Breach')) {
@@ -2085,7 +2089,7 @@
                     else if (rollVal === 4) { text = "Large Security Droids (Plated, Double-Tap). Spawn normally."; spawnedEnemy = 'Large Security Droids'; pCheck = true; }
                     else if (rollVal === 5) { text = "VRG Compliance Team (Low-Profile, Pinning Fire). Spawn normally."; spawnedEnemy = 'VRG Compliance Team'; pCheck = true; }
                     else if (rollVal === 6) { text = "Bio-Asset (Frenzied, Cull Protocol). Spawn normally."; spawnedEnemy = 'Bio-Asset'; pCheck = true; }
-                    else if (rollVal === 7) { text = "C-FRAME Combat Units (Redundant Core, Hardwired). Spawn and activate immediately."; spawnedEnemy = 'C-FRAME Combat Units'; pCheck = true; }
+                    else if (rollVal === 7) { text = "C-FRAME Combat Units (Redundant Core, Self-Sealing). Spawn and activate immediately."; spawnedEnemy = 'C-FRAME Combat Units'; pCheck = true; }
                     else if (rollVal === 8) { text = "Radiation Spike + Toxic Fumes. Both Hazards apply simultaneously."; addHazard('Radiation Spike'); addHazard('Toxic Fumes'); }
                     else if (rollVal === 9) { text = "Large Xeno Types (Reach). Spawn normally."; spawnedEnemy = 'Large Xeno Types'; pCheck = true; }
                     else if (rollVal === 10) { text = "Everything Breaks. Resolving twice..."; }
@@ -2963,135 +2967,293 @@
                         );
                     })()}
 
-                    {combatPrompt && (() => {
-                        const char = crew.find(c => c.id === combatPrompt.charId);
-                        if (!char) return null;
-                        const availableDice = ['load', 'focus', 'grit'].filter(v => getDieState(char, v) === 'ready');
+                    {/* PRINT ONLY SECTION - Handles both Roster and AAR Layouts */}
+                    <div className="print-only print-container">
+                        {printLayout === 'roster' && (
+                            <>
+                                {crew.map((char, idx) => {
+                                    const availableUSlots = calculateUSlots(char);
+                                    return (
+                                        <div key={`print-${char.id}`} className="print-card">
+                                            <div className="print-header">
+                                                <span>SCRAPJACKS CREW RECORD - {crewName.toUpperCase()}</span>
+                                                <span>FORM VRG-SJ-CR-01</span>
+                                            </div>
+                                            
+                                            <div className="print-section">
+                                                <div className="print-section-title">CHARACTER INFO</div>
+                                                <div className="print-row">
+                                                    <div className="print-col"><strong>NAME/CALL SIGN:</strong> <span style={{borderBottom: '1px solid black', width:'100%', display:'inline-block'}}>{char.name || '\u00A0'}</span></div>
+                                                </div>
+                                                <div className="print-row">
+                                                    <div className="print-col"><strong>ROLE:</strong> <span style={{borderBottom: '1px solid black', width:'100%', display:'inline-block'}}>{char.role}</span></div>
+                                                </div>
+                                                <div className="rules-text" style={{marginTop: '4px'}}><strong>Special:</strong> {ROLES[char.role].special}</div>
+                                                {char.trainingModule !== 'None' && <div className="rules-text"><strong>Training:</strong> {char.trainingModule}</div>}
+                                                {char.veteranKnack !== 'None' && <div className="rules-text"><strong>Veteran:</strong> {char.veteranKnack}</div>}
+                                            </div>
+
+                                            <div style={{display: 'flex'}}>
+                                                <div style={{flex: 2, paddingRight: '12px'}}>
+                                                    <div className="print-section">
+                                                        <div className="print-section-title">VITALS</div>
+                                                        <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
+                                                            <div style={{textAlign:'center'}}>
+                                                                <div style={{border:'2px solid black', padding:'8px 16px', fontWeight:'bold', fontSize:'18px'}}>{char.vitals.load}</div>
+                                                                <div style={{fontSize:'10px', marginTop:'2px'}}>LOAD (Strength)</div>
+                                                            </div>
+                                                            <div style={{textAlign:'center'}}>
+                                                                <div style={{border:'2px solid black', padding:'8px 16px', fontWeight:'bold', fontSize:'18px'}}>{char.vitals.focus}</div>
+                                                                <div style={{fontSize:'10px', marginTop:'2px'}}>FOCUS (Acuity)</div>
+                                                            </div>
+                                                            <div style={{textAlign:'center'}}>
+                                                                <div style={{border:'2px solid black', padding:'8px 16px', fontWeight:'bold', fontSize:'18px'}}>{char.vitals.grit}</div>
+                                                                <div style={{fontSize:'10px', marginTop:'2px'}}>GRIT (Resolve)</div>
+                                                            </div>
+                                                        </div>
+                                                        <div><strong>TWO DICE BONUS:</strong> <span style={{borderBottom: '1px solid black'}}>{ROLES[char.role].tdb}</span></div>
+                                                    </div>
+
+                                                    <div className="print-section">
+                                                        <div className="print-section-title">WEAPONS</div>
+                                                        <div style={{marginBottom: '6px'}}>
+                                                            <strong>PRIMARY:</strong> {char.ranged} {char.rangedMod !== 'None' ? `[${char.rangedMod}]` : ''}
+                                                            <div className="rules-text">Rules: {WEAPONS_RANGED[char.ranged]?.effects || ''}</div>
+                                                            {char.rangedMod !== 'None' && <div className="rules-text">Mod: {WEAPON_MODS[char.rangedMod].effect}</div>}
+                                                        </div>
+                                                        <div style={{borderTop: '1px solid #eee', paddingTop: '4px'}}>
+                                                            <strong>SECONDARY:</strong> {char.melee} {char.meleeMod !== 'None' ? `[${char.meleeMod}]` : ''}
+                                                            <div className="rules-text">Rules: {WEAPONS_MELEE[char.melee]?.effects || ''}</div>
+                                                            {char.meleeMod !== 'None' && <div className="rules-text">Mod: {WEAPON_MODS[char.meleeMod].effect}</div>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{flex: 1}}>
+                                                    <div className="print-section">
+                                                        <div className="print-section-title">FEATURES & GEAR</div>
+                                                        <div style={{marginBottom:'6px'}}>
+                                                            <strong>KNACK:</strong> {char.knack}
+                                                            <div className="rules-text">{KNACKS[char.knack].effect}</div>
+                                                        </div>
+                                                        <div style={{marginBottom:'4px'}}>
+                                                            <strong>RATTLE:</strong> {char.rattle}
+                                                            <div className="rules-text">{RATTLES[char.rattle].effect}</div>
+                                                        </div>
+                                                        {char.scars.length > 0 && (
+                                                            <div style={{marginBottom:'4px', borderTop:'1px solid #eee', paddingTop:'4px'}}>
+                                                                <strong>SCARS:</strong> {char.scars.join(', ')}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="print-section">
+                                                        <div className="print-section-title">EVA SUIT</div>
+                                                        <div style={{marginBottom:'4px'}}><strong>TYPE:</strong> {char.suit}</div>
+                                                        <div style={{marginBottom:'4px'}}><strong>MOVEMENT:</strong> {SUITS[char.suit]?.move}"</div>
+                                                        <div style={{marginBottom:'4px'}}><strong>DURABILITY:</strong> {SUITS[char.suit]?.dur}</div>
+                                                        
+                                                        {char.evaMods.length > 0 && (
+                                                            <div style={{marginTop:'6px', borderTop:'1px solid #eee', paddingTop:'4px'}}>
+                                                                <strong>MODS:</strong>
+                                                                {char.evaMods.map(mod => (
+                                                                    <div key={mod} style={{marginBottom:'4px'}}>
+                                                                        <span style={{fontSize:'10px', fontWeight:'bold'}}>{mod}</span>
+                                                                        <div className="rules-text">{EVA_MODS[mod].effect}</div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div style={{display: 'flex', gap: '8px', marginBottom: '8px'}}>
+                                                <div className="print-section" style={{flex: 1}}>
+                                                    <div style={{fontSize:'10px', fontWeight:'bold'}}>CREW AIRCHARGE SUPPLY</div>
+                                                    <div className="print-box" style={{borderBottomWidth: '2px'}}></div>
+                                                </div>
+                                                <div className="print-section" style={{flex: 1}}>
+                                                    <div style={{fontSize:'10px', fontWeight:'bold'}}>RECOVERED SALVAGE</div>
+                                                    <div className="print-box" style={{borderBottomWidth: '2px'}}></div>
+                                                </div>
+                                                <div className="print-section" style={{flex: 1}}>
+                                                    <div style={{fontSize:'10px', fontWeight:'bold'}}>LEGACY LOCKER</div>
+                                                    <div className="print-box" style={{borderBottomWidth: '2px', padding: '2px', fontSize: '8px', whiteSpace: 'normal'}}>
+                                                        {legacyLocker.map(g => g.name).join(', ')}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div style={{display: 'flex', gap: '8px'}}>
+                                                <div className="print-section" style={{flex: 1}}>
+                                                    <div className="print-section-title">UTILITY SLOTS (Capacity: {availableUSlots})</div>
+                                                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px'}}>
+                                                        {Array.from({length: Math.max(6, availableUSlots)}).map((_, i) => {
+                                                            const itemName = char.uItems[i] || 'Empty';
+                                                            const isEquipped = itemName !== 'Empty';
+                                                            return (
+                                                                <div key={i} className="print-uitem" style={{opacity: i >= availableUSlots ? 0.3 : 1}}>
+                                                                    <div className="print-uitem-box"></div>
+                                                                    <div style={{borderBottom: '1px solid #ccc', flex: 1, minHeight: '16px', paddingBottom: '2px'}}>
+                                                                        {isEquipped ? (
+                                                                            <>
+                                                                                <strong>{itemName}</strong>
+                                                                                <div className="rules-text" style={{marginTop:'1px'}}>{U_ITEMS[itemName].effect}</div>
+                                                                            </>
+                                                                        ) : (
+                                                                            <span style={{color: '#999', fontStyle: 'italic'}}>{i >= availableUSlots ? 'Slot Unavailable' : ''}</span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="print-footer">
+                                                PROPERTY OF VASTSTAR RECOVERY GROUP <br/>
+                                                Unauthorized alteration voids contract.
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                                
+                                {/* Appended Campaign & Vessel Tracker for the Roster Printout */}
+                                <div className="print-card" style={{marginTop: '24px'}}>
+                                    <div className="print-header">
+                                        <span>CAMPAIGN & VESSEL RECORD - {crewName.toUpperCase()}</span>
+                                        <span>FORM VRG-SJ-CMP-01</span>
+                                    </div>
+                                    
+                                    <div style={{display: 'flex', gap: '12px'}}>
+                                        <div style={{flex: 1}}>
+                                            <div className="print-section">
+                                                <div className="print-section-title">VESSEL STATUS</div>
+                                                <div className="print-row"><strong>CLASS:</strong> {shipClass}</div>
+                                                <div className="print-row"><strong>ACR DEBT:</strong> {acrDebt}</div>
+                                                <div className="print-row"><strong>UPGRADES:</strong> {shipUpgrades.length > 0 ? shipUpgrades.join(', ') : 'None'}</div>
+                                            </div>
+                                            <div className="print-section">
+                                                <div className="print-section-title">VRG COMPLIANCE</div>
+                                                <div className="print-row"><strong>ACTIVE TRACES:</strong> {traces} / 3</div>
+                                                <div className="rules-text">Audit triggers at 3 Traces.</div>
+                                            </div>
+                                        </div>
+                                        <div style={{flex: 1}}>
+                                            <div className="print-section">
+                                                <div className="print-section-title">FINANCIALS</div>
+                                                <div className="print-row"><strong>BANKED SALVAGE:</strong> {salvage}</div>
+                                                <div className="print-row"><strong>CLEAN EXIT TARGET:</strong> {cleanExitGoal}</div>
+                                            </div>
+                                            <div className="print-section">
+                                                <div className="print-section-title">LEGACY LOCKER ITEMS</div>
+                                                <div className="rules-text">
+                                                    {legacyLocker.length > 0 ? legacyLocker.map(g => g.name).join(', ') : 'Empty'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="print-footer">
+                                        PROPERTY OF VASTSTAR RECOVERY GROUP <br/>
+                                        Unauthorized alteration voids contract.
+                                    </div>
+                                </div>
+                            </>
+                        )}
                         
-                        return (
-                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 no-print">
-                            <div className="bg-slate-800 border border-slate-600 p-6 rounded-lg shadow-xl max-w-sm w-full">
-                                <h3 className="text-xl font-bold text-white mb-4">Execute Combat Action</h3>
-                                <div className="space-y-4 mb-6">
-                                    <div>
-                                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Attacker</label>
-                                        <div className="bg-slate-900 text-amber-500 font-bold p-2 rounded border border-slate-700">{char.name} ({char.role})</div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Action Die</label>
-                                        <select value={combatForm.vital} onChange={e => setCombatForm({...combatForm, vital: e.target.value})} className="w-full bg-slate-900 text-white p-2 rounded border border-slate-700 focus:outline-none focus:border-amber-500">
-                                            {availableDice.map(v => <option key={v} value={v}>{v.toUpperCase()} ({char.vitals[v]})</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Weapon</label>
-                                        <select value={combatForm.weaponType} onChange={e => setCombatForm({...combatForm, weaponType: e.target.value})} className="w-full bg-slate-900 text-white p-2 rounded border border-slate-700 focus:outline-none focus:border-amber-500">
-                                            <option value="ranged">Ranged: {char.ranged}</option>
-                                            <option value="melee">Melee: {char.melee}</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Target Hostile</label>
-                                        <select value={combatForm.targetId} onChange={e => setCombatForm({...combatForm, targetId: e.target.value})} className="w-full bg-slate-900 text-white p-2 rounded border border-slate-700 focus:outline-none focus:border-amber-500">
-                                            {activeEnemies.map((e, idx) => <option key={e.id} value={e.id}>{e.type} (Squad #{idx+1})</option>)}
-                                        </select>
-                                    </div>
+                        {/* AAR Print Layout */}
+                        {printLayout === 'aar' && (
+                            <div className="print-card">
+                                <div className="print-header">
+                                    <span>AFTER ACTION REPORT (AAR)</span>
+                                    <span>FORM VRG-SJ-AAR-02</span>
+                                </div>
+                                
+                                <div className="print-section">
+                                    <div className="print-section-title">MISSION SUMMARY</div>
+                                    <div className="print-row"><strong>CREW DESIGNATION:</strong> {crewName}</div>
+                                    <div className="print-row"><strong>VESSEL DEPLOYED:</strong> {shipClass}</div>
+                                    <div className="print-row"><strong>TURNS SURVIVED:</strong> {turn}</div>
+                                    <div className="print-row"><strong>REMAINING AIRCHARGE:</strong> {aircharge} units</div>
+                                    <div className="print-row"><strong>TOTAL SALVAGE SECURED:</strong> {salvage} units</div>
+                                    <div className="print-row"><strong>OUTSTANDING ACR DEBT:</strong> {acrDebt} units</div>
+                                    <div className="print-row"><strong>NET MISSION PROFIT:</strong> {salvage - acrDebt} units</div>
+                                </div>
 
-                                    <div className="flex gap-4">
-                                        <label className="flex items-center gap-2 text-sm text-slate-300">
-                                            <input type="checkbox" checked={combatForm.isAiming} onChange={e => setCombatForm({...combatForm, isAiming: e.target.checked})} className="accent-amber-500" /> Aiming (+2 Atk, -2 Enemy DD)
-                                        </label>
-                                        <label className="flex items-center gap-2 text-sm text-slate-300">
-                                            <input type="checkbox" checked={combatForm.isAssisted} onChange={e => setCombatForm({...combatForm, isAssisted: e.target.checked})} className="accent-amber-500" /> Assisted (+2 Atk or TDB)
-                                        </label>
-                                    </div>
-                                    <div className="flex gap-4 border-t border-slate-700 pt-4">
-                                        <div className="flex-1">
-                                            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Manual Atk Roll</label>
-                                            <input type="number" value={combatForm.manualAtk || ''} onChange={e => setCombatForm({...combatForm, manualAtk: e.target.value})} className="w-full bg-slate-900 text-white p-2 rounded border border-slate-700 focus:outline-none focus:border-amber-500" placeholder="Optional" />
-                                        </div>
-                                        <div className="flex-1">
-                                            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Manual Def Roll</label>
-                                            <input type="number" value={combatForm.manualDef || ''} onChange={e => setCombatForm({...combatForm, manualDef: e.target.value})} className="w-full bg-slate-900 text-white p-2 rounded border border-slate-700 focus:outline-none focus:border-amber-500" placeholder="Optional" />
-                                        </div>
+                                <div className="print-section mt-4">
+                                    <div className="print-section-title">CREW DEBRIEF</div>
+                                    <div style={{display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px'}}>
+                                        {crew.map(c => {
+                                            const isRedlined = c.wounds >= 4;
+                                            return (
+                                                <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #ccc', paddingBottom: '4px' }}>
+                                                    <span style={{ fontSize: '12px' }}><strong>{c.name}</strong> ({c.role})</span>
+                                                    <span style={{ fontSize: '10px', color: isRedlined ? 'red' : 'black', fontWeight: isRedlined ? 'bold' : 'normal' }}>
+                                                        {isRedlined ? 'REDLINED/MIA' : 'ACTIVE'} | Wounds: {c.wounds}/4 | Stress: {c.stress}/4 | Suit Breaches: {c.suitBreaches}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
-                                <div className="flex justify-end gap-3 border-t border-slate-700 pt-4">
-                                    <button onClick={() => setCombatPrompt(null)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-white text-sm font-bold transition-colors">Cancel</button>
-                                    <button onClick={executeCombat} className="px-4 py-2 bg-red-700 hover:bg-red-600 rounded text-white text-sm font-bold transition-colors shadow">Roll Attack</button>
+
+                                <div className="print-section mt-4">
+                                    <div className="print-section-title">OPERATIONAL LOG</div>
+                                    <div style={{ fontSize: '10px', marginTop: '8px' }}>
+                                        {playLog.length > 0 ? playLog.slice().reverse().map((log, i) => (
+                                            <div key={i} className="aar-log-entry">{log}</div>
+                                        )) : <div style={{fontStyle: 'italic', padding: '8px 0'}}>No events logged during mission timeframe.</div>}
+                                    </div>
+                                </div>
+
+                                <div className="print-footer mt-6 border-t border-black pt-2 text-center">
+                                    SUBMITTED TO VASTSTAR RECOVERY GROUP <br/>
+                                    ALL SALVAGE REMAINS PROPERTY OF VRG PENDING DEBT SETTLEMENT.
                                 </div>
                             </div>
-                        </div>
-                        );
-                    })()}
+                        )}
 
-                    {pendingPenaltyPrompt && (
-                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 no-print">
-                            <div className={`border ${pendingPenaltyPrompt.type === 'heal' ? 'bg-slate-800 border-emerald-600' : 'bg-slate-800 border-red-600'} p-6 rounded-lg shadow-xl max-w-sm w-full`}>
-                                <h3 className={`text-xl font-bold mb-4 ${pendingPenaltyPrompt.type === 'heal' ? 'text-emerald-500' : 'text-red-500'}`}>
-                                    {pendingPenaltyPrompt.type === 'heal' ? 'Select Crew to Heal' : 'Select Crew for Penalty'}
-                                </h3>
-                                <p className="text-slate-300 mb-4 text-sm">{pendingPenaltyPrompt.reason}</p>
-                                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
-                                    {crew.map(c => {
-                                        const isDeadOrRetired = c.status === 'Dead' || c.status === 'Retired';
-                                        const isDisabled = isDeadOrRetired || (c.wounds >= 4 && (pendingPenaltyPrompt.type === 'wound' || pendingPenaltyPrompt.type === 'loseGrit' || pendingPenaltyPrompt.type === 'loseFocus'));
-                                        return (
-                                        <button 
-                                            key={c.id} 
-                                            disabled={isDisabled}
-                                            onClick={() => applyPenaltyToChar(c, pendingPenaltyPrompt)}
-                                            className={`p-3 rounded text-left flex justify-between items-center transition-colors border ${
-                                                pendingPenaltyPrompt.type !== 'heal' 
-                                                    ? (isDisabled ? 'bg-red-950/20 border-red-900/30 text-slate-600 cursor-not-allowed' : 'bg-slate-700 hover:bg-red-900/60 border-slate-600 text-white hover:border-red-500') 
-                                                    : (isDisabled ? 'bg-slate-900/50 border-slate-800 text-slate-600 cursor-not-allowed' : 'bg-slate-700 hover:bg-emerald-900/60 border-slate-600 text-white hover:border-emerald-500')
-                                            }`}
-                                        >
-                                            <span className="font-bold">{c.name}</span>
-                                            <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded ${c.wounds >= 4 ? 'bg-red-900 text-white' : 'bg-slate-900 text-slate-400'}`}>
-                                                {c.status !== 'Active' ? c.status : `Wounds: ${c.wounds}/4`}
-                                            </span>
-                                        </button>
-                                    )})}
+                        {/* Campaign Log Print Layout */}
+                        {printLayout === 'campaign' && (
+                            <div className="print-card">
+                                <div className="print-header">
+                                    <span>CAMPAIGN RECORD - {crewName.toUpperCase()}</span>
+                                    <span>FORM VRG-SJ-CMP-03</span>
                                 </div>
-                                <div className="mt-4 flex justify-between gap-2 border-t border-slate-700 pt-4">
-                                    <button onClick={() => {
-                                        const aliveCrew = crew.filter(c => c.status === 'Active');
-                                        const targetPool = aliveCrew.length > 0 ? aliveCrew : crew;
-                                        const randomChar = targetPool[Math.floor(Math.random() * targetPool.length)];
-                                        applyPenaltyToChar(randomChar, pendingPenaltyPrompt, true);
-                                    }} className="flex-1 px-3 py-2 bg-slate-800 border border-slate-600 hover:bg-slate-700 rounded text-slate-300 text-xs font-bold transition-colors">
-                                        Select Randomly
-                                    </button>
-                                    <button onClick={() => setPendingPenaltyPrompt(null)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-white text-sm font-bold transition-colors">
-                                        Cancel
-                                    </button>
+                                
+                                <div className="print-section">
+                                    <div className="print-section-title">CREW STATUS</div>
+                                    <div className="print-row"><strong>CREW DESIGNATION:</strong> {crewName}</div>
+                                    <div className="print-row"><strong>CURRENT VESSEL:</strong> {shipClass}</div>
+                                    <div className="print-row"><strong>BANKED SALVAGE:</strong> {salvage} units</div>
+                                    <div className="print-row"><strong>ACTIVE TRACES:</strong> {traces} / 3</div>
                                 </div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {shipChangePrompt && (
-                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 no-print">
-                            <div className="bg-slate-800 border border-slate-600 p-6 rounded-lg shadow-xl max-w-sm w-full">
-                                <h3 className="text-xl font-bold text-white mb-2">Acquire New Vessel</h3>
-                                <p className="text-slate-300 mb-4 text-sm">Transferring to {shipChangePrompt.newShip}. This will reset your Ship Upgrades.</p>
-                                {SHIPS[shipChangePrompt.newShip].crewCount < crew.length && (
-                                    <p className="text-red-400 font-bold mb-4 text-sm border border-red-900/50 p-2 rounded bg-red-950/20">WARNING: This limits your crew to {SHIPS[shipChangePrompt.newShip].crewCount} and will permanently remove the last Scrapjack(s) on your roster.</p>
-                                )}
-                                <p className="text-amber-400 mb-6 text-sm font-bold border-t border-slate-700 pt-4">Would you like to roll on the Legacy Equipment table? (This replaces your current Legacy Locker).</p>
-                                <div className="flex flex-col gap-2">
-                                    <div className="flex gap-2">
-                                        <input type="number" placeholder="1d6" value={manualRolls.legacy || ''} onChange={e => setManualRolls({...manualRolls, legacy: e.target.value})} className="w-16 bg-slate-900 border border-slate-700 rounded text-white text-center focus:outline-none focus:border-amber-500" />
-                                        <button onClick={() => { applyShipChange(shipChangePrompt.newShip, true, manualRolls.legacy); setShipChangePrompt(null); }} className="flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-600 rounded text-white font-bold transition-colors text-sm shadow">Yes, Transfer & Roll</button>
+
+                                <div className="print-section mt-4">
+                                    <div className="print-section-title">SUPPORT ASSETS & UPGRADES</div>
+                                    <div className="rules-text" style={{marginTop: '4px', fontSize: '11px'}}>
+                                        {shipUpgrades.length > 0 ? shipUpgrades.join(' | ') : 'No upgrades equipped.'}
                                     </div>
-                                    <button onClick={() => { applyShipChange(shipChangePrompt.newShip, false); setShipChangePrompt(null); }} className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 rounded text-white font-bold transition-colors text-sm shadow mt-2">Yes, Transfer Only (No Roll)</button>
-                                    <button onClick={() => setShipChangePrompt(null)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-slate-300 mt-2 transition-colors text-sm font-bold">Cancel Transfer</button>
+                                </div>
+
+                                <div className="print-section mt-4">
+                                    <div className="print-section-title">OPERATIONS HISTORY</div>
+                                    <div style={{ fontSize: '10px', marginTop: '8px' }}>
+                                        {campaignLog.length > 0 ? campaignLog.map((log, i) => (
+                                            <div key={i} className="aar-log-entry" style={{padding: '4px 0'}}>{log}</div>
+                                        )) : <div style={{fontStyle: 'italic', padding: '8px 0'}}>No operations logged on record.</div>}
+                                    </div>
+                                </div>
+
+                                <div className="print-footer mt-6 border-t border-black pt-2 text-center">
+                                    SUBMITTED TO VASTSTAR RECOVERY GROUP <br/>
+                                    UNAUTHORIZED ALTERATION VOIDS CONTRACT.
                                 </div>
                             </div>
-                        </div>
-                    )}
-
+                        )}
+                    </div>
                 </div>
             );
         }
